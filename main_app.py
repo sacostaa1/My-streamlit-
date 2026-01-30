@@ -6,136 +6,190 @@ import seaborn as sns
 import plotly.express as px
 import io
 
-# -----------------------------
+# =============================
 # Configuración inicial
-# -----------------------------
+# =============================
 st.set_page_config(
-    page_title="EDA - Análisis Exploratorio de Datos",
+    page_title="EDA Avanzado",
     layout="wide"
 )
 
-st.title("📊 Análisis Exploratorio de Datos (EDA)")
-st.write(
+st.title("📊 Análisis Exploratorio de Datos (EDA Avanzado)")
+st.markdown(
     """
-    Aplicación interactiva para explorar, analizar y visualizar conjuntos de datos
-    usando **Streamlit**.
+    Este EDA permite **explorar, limpiar y analizar** un conjunto de datos
+    mediante estadísticas, visualizaciones y relaciones entre variables.
     """
 )
 
-# -----------------------------
+# =============================
 # Carga de datos
-# -----------------------------
-st.sidebar.header("📂 Cargar datos")
-uploaded_file = st.sidebar.file_uploader(
-    "Sube tu archivo CSV",
-    type=["csv"]
-)
+# =============================
+st.sidebar.header("📂 Cargar dataset")
+uploaded_file = st.sidebar.file_uploader("Sube un archivo CSV", type=["csv"])
 
-if uploaded_file is not None:
+if uploaded_file:
     df = pd.read_csv(uploaded_file)
-
     st.success("Archivo cargado correctamente ✅")
 
-    # -----------------------------
-    # Vista general del dataset
-    # -----------------------------
-    st.subheader("🔍 Vista general de los datos")
+    # =============================
+    # Vista general
+    # =============================
+    st.header("🔍 Visión general")
 
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Filas", df.shape[0])
-    col2.metric("Columnas", df.shape[1])
-    col3.metric("Valores nulos", df.isnull().sum().sum())
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Filas", df.shape[0])
+    c2.metric("Columnas", df.shape[1])
+    c3.metric("Duplicados", df.duplicated().sum())
+    c4.metric("Valores nulos", df.isnull().sum().sum())
 
-    st.dataframe(df.head())
+    st.dataframe(df.head(10))
 
-    # -----------------------------
+    # =============================
     # Información del dataset
-    # -----------------------------
-    st.subheader("ℹ️ Información del dataset")
-
+    # =============================
+    st.header("ℹ️ Información del dataset")
     buffer = io.StringIO()
     df.info(buf=buffer)
     st.code(buffer.getvalue(), language="text")
 
-    # -----------------------------
-    # Estadísticas descriptivas
-    # -----------------------------
-    st.subheader("📈 Estadísticas descriptivas")
-    st.dataframe(df.describe())
+    # =============================
+    # Tipos de variables
+    # =============================
+    st.header("🧬 Tipos de variables")
 
-    # -----------------------------
-    # Análisis de valores nulos
-    # -----------------------------
-    st.subheader("🧩 Valores nulos por columna")
-
-    nulls = df.isnull().sum()
-    nulls_df = pd.DataFrame({
-        "Columna": nulls.index,
-        "Valores nulos": nulls.values
+    dtypes_df = pd.DataFrame({
+        "Columna": df.columns,
+        "Tipo de dato": df.dtypes.astype(str)
     })
+    st.dataframe(dtypes_df)
+
+    # =============================
+    # Valores nulos
+    # =============================
+    st.header("🧩 Análisis de valores nulos")
+
+    nulls = df.isnull().sum().reset_index()
+    nulls.columns = ["Columna", "Valores nulos"]
+    nulls["Porcentaje"] = (nulls["Valores nulos"] / len(df)) * 100
+
+    st.dataframe(nulls)
 
     fig_nulls = px.bar(
-        nulls_df,
+        nulls,
         x="Columna",
         y="Valores nulos",
         title="Valores nulos por columna"
     )
     st.plotly_chart(fig_nulls, use_container_width=True)
 
-    # -----------------------------
-    # Selección de columnas numéricas
-    # -----------------------------
-    numeric_cols = df.select_dtypes(include=np.number).columns.tolist()
+    # =============================
+    # Estadísticas descriptivas
+    # =============================
+    st.header("📈 Estadísticas descriptivas")
+    st.dataframe(df.describe(include="all").transpose())
 
-    st.subheader("📊 Análisis de variables numéricas")
+    # =============================
+    # Columnas numéricas
+    # =============================
+    numeric_cols = df.select_dtypes(include=np.number).columns.tolist()
+    cat_cols = df.select_dtypes(exclude=np.number).columns.tolist()
+
+    # =============================
+    # Análisis univariado numérico
+    # =============================
+    st.header("📊 Análisis univariado (Numérico)")
 
     if numeric_cols:
-        selected_col = st.selectbox(
-            "Selecciona una variable numérica",
-            numeric_cols
-        )
+        num_col = st.selectbox("Selecciona variable numérica", numeric_cols)
 
         col1, col2 = st.columns(2)
 
         with col1:
-            st.write("**Distribución**")
             fig_hist = px.histogram(
-                df,
-                x=selected_col,
-                nbins=30,
-                title=f"Distribución de {selected_col}"
+                df, x=num_col, nbins=40, marginal="box",
+                title=f"Distribución de {num_col}"
             )
             st.plotly_chart(fig_hist, use_container_width=True)
 
         with col2:
-            st.write("**Boxplot**")
-            fig_box = px.box(
-                df,
-                y=selected_col,
-                title=f"Boxplot de {selected_col}"
+            fig_violin = px.violin(
+                df, y=num_col, box=True,
+                title=f"Violin plot de {num_col}"
             )
-            st.plotly_chart(fig_box, use_container_width=True)
-    else:
-        st.warning("No se encontraron columnas numéricas.")
+            st.plotly_chart(fig_violin, use_container_width=True)
 
-    # -----------------------------
-    # Matriz de correlación
-    # -----------------------------
-    st.subheader("🔗 Matriz de correlación")
+        # Outliers
+        Q1 = df[num_col].quantile(0.25)
+        Q3 = df[num_col].quantile(0.75)
+        IQR = Q3 - Q1
+        outliers = df[(df[num_col] < Q1 - 1.5 * IQR) | (df[num_col] > Q3 + 1.5 * IQR)]
+
+        st.info(f"🔎 Outliers detectados (IQR): **{outliers.shape[0]}**")
+
+    # =============================
+    # Análisis categórico
+    # =============================
+    st.header("🏷️ Análisis categórico")
+
+    if cat_cols:
+        cat_col = st.selectbox("Selecciona variable categórica", cat_cols)
+
+        freq_df = df[cat_col].value_counts().reset_index()
+        freq_df.columns = [cat_col, "Frecuencia"]
+
+        fig_cat = px.bar(
+            freq_df,
+            x=cat_col,
+            y="Frecuencia",
+            title=f"Distribución de {cat_col}"
+        )
+        st.plotly_chart(fig_cat, use_container_width=True)
+
+    # =============================
+    # Análisis bivariado
+    # =============================
+    st.header("🔀 Análisis bivariado")
 
     if len(numeric_cols) >= 2:
-        corr = df[numeric_cols].corr()
+        x_col = st.selectbox("Variable X", numeric_cols, key="x")
+        y_col = st.selectbox("Variable Y", numeric_cols, key="y")
 
-        fig_corr = plt.figure(figsize=(10, 6))
-        sns.heatmap(
-            corr,
-            annot=True,
-            cmap="coolwarm",
-            fmt=".2f"
+        fig_scatter = px.scatter(
+            df, x=x_col, y=y_col, trendline="ols",
+            title=f"{x_col} vs {y_col}"
         )
-        st.pyplot(fig_corr)
-    else:
-        st.info("No hay suficientes variables numéricas para calcular correlaciones.")
+        st.plotly_chart(fig_scatter, use_container_width=True)
+
+    # =============================
+    # Correlaciones
+    # =============================
+    st.header("🔗 Correlaciones")
+
+    corr_method = st.radio(
+        "Método de correlación",
+        ["pearson", "spearman", "kendall"]
+    )
+
+    if len(numeric_cols) >= 2:
+        corr = df[numeric_cols].corr(method=corr_method)
+
+        fig, ax = plt.subplots(figsize=(10, 6))
+        sns.heatmap(corr, annot=True, cmap="coolwarm", fmt=".2f", ax=ax)
+        st.pyplot(fig)
+
+    # =============================
+    # Exportar datos limpios
+    # =============================
+    st.header("📥 Exportar datos")
+
+    csv = df.drop_duplicates().to_csv(index=False).encode("utf-8")
+    st.download_button(
+        label="Descargar dataset sin duplicados",
+        data=csv,
+        file_name="dataset_limpio.csv",
+        mime="text/csv"
+    )
 
 else:
-    st.info("⬅️ Sube un archivo CSV desde la barra lateral para comenzar el análisis.")
+    st.info("⬅️ Sube un archivo CSV para iniciar el EDA")
