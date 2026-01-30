@@ -4,6 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 import plotly.express as px
+import io
 
 # -----------------------------
 # Configuración inicial
@@ -52,9 +53,9 @@ if uploaded_file is not None:
     # -----------------------------
     st.subheader("ℹ️ Información del dataset")
 
-    buffer = []
+    buffer = io.StringIO()
     df.info(buf=buffer)
-    st.text("\n".join(buffer))
+    st.code(buffer.getvalue(), language="text")
 
     # -----------------------------
     # Estadísticas descriptivas
@@ -138,4 +139,3 @@ if uploaded_file is not None:
 
 else:
     st.info("⬅️ Sube un archivo CSV desde la barra lateral para comenzar el análisis.")
-
