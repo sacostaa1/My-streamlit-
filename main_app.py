@@ -3,8 +3,6 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
-import plotly.express as px
-import plotly.graph_objects as go
 import io
 
 # =============================
@@ -17,8 +15,11 @@ st.set_page_config(
 
 st.title("📊 Análisis Exploratorio de Datos (EDA Avanzado)")
 st.markdown(
-    "EDA interactivo, robusto y estable (compatible con Python 3.13 y Streamlit Cloud)."
+    "EDA robusto y estable usando **pandas, matplotlib y seaborn** "
+    "(sin dependencias problemáticas)."
 )
+
+sns.set_style("whitegrid")
 
 # =============================
 # Funciones auxiliares
@@ -77,7 +78,7 @@ if uploaded_file:
     st.code(buffer.getvalue(), language="text")
 
     # =============================
-    # Tipos de datos
+    # Tipos de variables
     # =============================
     st.header("🧬 Tipos de variables")
     st.dataframe(
@@ -92,22 +93,20 @@ if uploaded_file:
     # =============================
     st.header("🧩 Análisis de valores nulos")
 
-    nulls = (
-        df.isnull()
-        .sum()
-        .reset_index()
-        .rename(columns={"index": "columna", 0: "nulos"})
-    )
-    nulls["porcentaje"] = (nulls["nulos"] / len(df)) * 100
-    st.dataframe(nulls)
+    nulls = df.isnull().sum().sort_values(ascending=False)
+    nulls_df = pd.DataFrame({
+        "Columna": nulls.index,
+        "Nulos": nulls.values,
+        "Porcentaje (%)": (nulls.values / len(df)) * 100
+    })
 
-    fig_nulls = px.bar(
-        nulls,
-        x="columna",
-        y="nulos",
-        title="Valores nulos por columna"
-    )
-    st.plotly_chart(fig_nulls, use_container_width=True)
+    st.dataframe(nulls_df)
+
+    fig, ax = plt.subplots(figsize=(10, 4))
+    sns.barplot(x="Columna", y="Nulos", data=nulls_df, ax=ax)
+    ax.set_title("Valores nulos por columna")
+    ax.tick_params(axis="x", rotation=90)
+    st.pyplot(fig)
 
     # =============================
     # Estadísticas descriptivas
@@ -129,14 +128,10 @@ if uploaded_file:
     if numeric_cols:
         num_col = st.selectbox("Selecciona variable numérica", numeric_cols)
 
-        fig = px.histogram(
-            df,
-            x=num_col,
-            nbins=40,
-            marginal="box",
-            title=f"Distribución de {num_col}"
-        )
-        st.plotly_chart(fig, use_container_width=True)
+        fig, ax = plt.subplots(figsize=(8, 4))
+        sns.histplot(df[num_col], kde=True, ax=ax)
+        ax.set_title(f"Distribución de {num_col}")
+        st.pyplot(fig)
 
         Q1 = df[num_col].quantile(0.25)
         Q3 = df[num_col].quantile(0.75)
@@ -157,19 +152,16 @@ if uploaded_file:
     if cat_cols:
         cat_col = st.selectbox("Selecciona variable categórica", cat_cols)
 
-        freq = df[cat_col].value_counts().reset_index()
-        freq.columns = [cat_col, "frecuencia"]
+        freq = df[cat_col].value_counts()
 
-        fig_cat = px.bar(
-            freq,
-            x=cat_col,
-            y="frecuencia",
-            title=f"Distribución de {cat_col}"
-        )
-        st.plotly_chart(fig_cat, use_container_width=True)
+        fig, ax = plt.subplots(figsize=(8, 4))
+        sns.barplot(x=freq.index, y=freq.values, ax=ax)
+        ax.set_title(f"Distribución de {cat_col}")
+        ax.tick_params(axis="x", rotation=45)
+        st.pyplot(fig)
 
     # =============================
-    # Análisis bivariado (SIN NARWHALS)
+    # Análisis bivariado + OLS
     # =============================
     st.header("🔀 Análisis bivariado")
 
@@ -177,46 +169,27 @@ if uploaded_file:
         x_col = st.selectbox("Variable X", numeric_cols, key="x")
         y_col = st.selectbox("Variable Y", numeric_cols, key="y")
 
-        add_trend = st.checkbox("Agregar línea de tendencia (OLS)", value=False)
+        add_trend = st.checkbox("Agregar línea de tendencia (OLS)")
 
         plot_df = df[[x_col, y_col]].dropna()
 
-        fig = go.Figure()
-
-        fig.add_trace(
-            go.Scatter(
-                x=plot_df[x_col],
-                y=plot_df[y_col],
-                mode="markers",
-                name="Datos"
-            )
+        fig, ax = plt.subplots(figsize=(7, 5))
+        sns.scatterplot(
+            x=plot_df[x_col],
+            y=plot_df[y_col],
+            ax=ax
         )
 
         if add_trend and len(plot_df) > 2:
             x = plot_df[x_col].values
             y = plot_df[y_col].values
-
             m, b = np.polyfit(x, y, 1)
-            y_pred = m * x + b
 
-            fig.add_trace(
-                go.Scatter(
-                    x=x,
-                    y=y_pred,
-                    mode="lines",
-                    name="OLS"
-                )
-            )
+            ax.plot(x, m * x + b, color="red")
+            st.info(f"📐 Ecuación OLS: y = {m:.4f}x + {b:.4f}")
 
-            st.info(f"📐 Ecuación: y = {m:.4f}x + {b:.4f}")
-
-        fig.update_layout(
-            title=f"{x_col} vs {y_col}",
-            xaxis_title=x_col,
-            yaxis_title=y_col
-        )
-
-        st.plotly_chart(fig, use_container_width=True)
+        ax.set_title(f"{x_col} vs {y_col}")
+        st.pyplot(fig)
 
     # =============================
     # Correlaciones
@@ -242,11 +215,12 @@ if uploaded_file:
 
     clean_df = df.drop_duplicates()
     st.download_button(
-        label="Descargar dataset limpio",
-        data=clean_df.to_csv(index=False).encode("utf-8"),
-        file_name="dataset_limpio.csv",
-        mime="text/csv"
+        "Descargar dataset limpio",
+        clean_df.to_csv(index=False).encode("utf-8"),
+        "dataset_limpio.csv",
+        "text/csv"
     )
 
 else:
     st.info("⬅️ Sube un archivo CSV para iniciar el EDA")
+
